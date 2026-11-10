@@ -1,0 +1,31 @@
+{
+  "name": "relayops",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Durable webhook delivery with NestJS and PostgreSQL",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "start": "node --env-file-if-exists=.env dist/main.js",
+    "worker": "node --env-file-if-exists=.env dist/worker.js",
+    "migrate": "node --env-file-if-exists=.env dist/migrate.js",
+    "demo": "node --env-file-if-exists=.env scripts/demo.mjs",
+    "test": "tsc -p tsconfig.json && node --test .test-build/test/*.test.js"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11",
+    "@nestjs/core": "^11",
+    "@nestjs/platform-express": "^11",
+    "@nestjs/swagger": "^11",
+    "pg": "^8",
+    "reflect-metadata": "^0.2",
+    "rxjs": "^7",
+    "zod": "^4"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "@types/pg": "^8",
+    "typescript": "~5.9.3"
+  }
+}

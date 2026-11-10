@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.test-build/
+.env
+.env.*
+!.env.example
+coverage/
+.DS_Store

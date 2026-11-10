@@ -1,0 +1,64 @@
+x-relayops: &relayops
+  image: relayops:dev
+  build: .
+  env_file: .env
+  environment:
+    DATABASE_URL: postgresql://relayops:relayops@db:5432/relayops
+    HOST: 0.0.0.0
+    PORT: 3000
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: relayops
+      POSTGRES_USER: relayops
+      POSTGRES_PASSWORD: relayops
+    volumes:
+      - relayops_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U relayops -d relayops"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  migrate:
+    <<: *relayops
+    command: ["node", "dist/migrate.js"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    <<: *relayops
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:${PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health/ready').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  receiver:
+    <<: *relayops
+    command: ["node", "scripts/demo.mjs", "receiver"]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/health').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 2s
+      timeout: 3s
+      retries: 10
+
+  worker:
+    <<: *relayops
+    command: ["node", "dist/worker.js"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      receiver:
+        condition: service_healthy
+
+volumes:
+  relayops_data:
