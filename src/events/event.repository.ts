@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { Database } from '../database';
 import { ClaimedEvent, DeliveryOutcome, EventInput, EventState, LEASE_MS, MAX_ATTEMPTS } from './event.contract';
 
-interface EventDetail {
+interface EventSummary {
   id: string;
   type: string;
   destination: string;
@@ -11,6 +11,11 @@ interface EventDetail {
   attemptCount: number;
   createdAt: Date;
   finishedAt: Date | null;
+  replayOf: string | null;
+  replayedBy: string | null;
+}
+
+interface EventDetail extends EventSummary {
   attempts: Array<{
     number: number;
     startedAt: string;
@@ -21,6 +26,13 @@ interface EventDetail {
 }
 
 type Acceptance = { id: string; createdAt: Date };
+const summaryFields = `
+  e.id, e.event_type AS type, e.destination, e.state, e.attempt_count AS "attemptCount",
+  e.created_at AS "createdAt", e.finished_at AS "finishedAt", e.replay_of AS "replayOf",
+  (SELECT child.id FROM relay_events child
+   WHERE child.workspace = e.workspace AND child.replay_of = e.id) AS "replayedBy"
+`;
+
 type Candidate = ClaimedEvent & { state: 'queued' | 'sending' };
 
 @Injectable()
@@ -48,11 +60,53 @@ export class EventRepository {
     return existing.rows[0];
   }
 
+  async list(workspace: string, state: EventState | undefined, cursor: string | undefined, limit: number) {
+    const { rows } = await this.db.pool.query<EventSummary>(`
+      SELECT ${summaryFields}
+      FROM relay_events e
+      WHERE e.workspace = $1 AND ($2::text IS NULL OR e.state = $2)
+        AND ($3::uuid IS NULL OR (e.created_at, e.id) < (
+          SELECT anchor.created_at, anchor.id FROM relay_events anchor
+          WHERE anchor.workspace = $1 AND anchor.id = $3
+        ))
+      ORDER BY e.created_at DESC, e.id DESC
+      LIMIT $4
+    `, [workspace, state ?? null, cursor ?? null, limit + 1]);
+    const items = rows.slice(0, limit);
+    return { items, nextCursor: rows.length > limit ? items.at(-1)?.id ?? null : null };
+  }
+
+  async replay(workspace: string, id: string) {
+    const inserted = await this.db.pool.query<Acceptance>(`
+      INSERT INTO relay_events (
+        id, workspace, idempotency_key, event_type, destination, payload, replay_of, delivery_id
+      )
+      SELECT $3, e.workspace, '@replay:' || e.id, e.event_type, e.destination, e.payload,
+             e.id, COALESCE(e.delivery_id, e.id)
+      FROM relay_events e
+      WHERE e.workspace = $1 AND e.id = $2 AND e.state = 'dead'
+      ON CONFLICT (replay_of) DO NOTHING
+      RETURNING id, created_at AS "createdAt"
+    `, [workspace, id, randomUUID()]);
+    if (inserted.rows[0]) return { status: 'accepted' as const, event: inserted.rows[0] };
+
+    const existing = await this.db.pool.query<{ id: string | null; createdAt: Date | null }>(`
+      SELECT child.id, child.created_at AS "createdAt"
+      FROM relay_events e
+      LEFT JOIN relay_events child ON child.workspace = e.workspace AND child.replay_of = e.id
+      WHERE e.workspace = $1 AND e.id = $2
+    `, [workspace, id]);
+    const source = existing.rows[0];
+    if (!source) return { status: 'missing' as const };
+    if (source.id && source.createdAt) {
+      return { status: 'accepted' as const, event: { id: source.id, createdAt: source.createdAt } };
+    }
+    return { status: 'unavailable' as const };
+  }
+
   async find(workspace: string, id: string) {
     const { rows } = await this.db.pool.query<EventDetail>(`
-      SELECT e.id, e.event_type AS type, e.destination, e.state,
-             e.attempt_count AS "attemptCount", e.created_at AS "createdAt",
-             e.finished_at AS "finishedAt",
+      SELECT ${summaryFields},
              COALESCE((
                SELECT jsonb_agg(jsonb_build_object(
                  'number', a.number, 'startedAt', a.started_at,
@@ -69,12 +123,14 @@ export class EventRepository {
   claim(leaseMs = LEASE_MS): Promise<ClaimedEvent | undefined> {
     return this.db.transaction(async (client) => {
       const { rows } = await client.query<Candidate>(`
-        SELECT id, workspace, event_type AS type, destination, payload, state,
-               attempt_count AS attempt, created_at AS "createdAt"
-        FROM relay_events
-        WHERE state IN ('queued', 'sending') AND next_run_at <= statement_timestamp()
-        ORDER BY next_run_at, id
-        FOR UPDATE SKIP LOCKED
+        SELECT e.id, COALESCE(e.delivery_id, e.id) AS "deliveryId", e.workspace,
+               e.event_type AS type, e.destination, e.payload, e.state, e.attempt_count AS attempt,
+               COALESCE(original.created_at, e.created_at) AS "createdAt"
+        FROM relay_events e
+        LEFT JOIN relay_events original ON original.workspace = e.workspace AND original.id = e.delivery_id
+        WHERE e.state IN ('queued', 'sending') AND e.next_run_at <= statement_timestamp()
+        ORDER BY e.next_run_at, e.id
+        FOR UPDATE OF e SKIP LOCKED
         LIMIT 1
       `);
       const event = rows[0];

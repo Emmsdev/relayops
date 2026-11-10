@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { resolve } from 'node:path';
 import { ConsoleLogger, DynamicModule, Module } from '@nestjs/common';
 import { HttpAdapterHost, NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
@@ -39,6 +40,14 @@ export async function createApi(config: Config, logger: ConsoleLogger | false = 
     bodyParser: false, logger, abortOnError: false,
   });
   app.disable('x-powered-by');
+  app.useStaticAssets(resolve('public'), {
+    prefix: '/console/',
+    setHeaders: (response) => {
+      response.setHeader('Cache-Control', 'no-store');
+      response.setHeader('Content-Security-Policy', "default-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'");
+      response.setHeader('X-Content-Type-Options', 'nosniff');
+    },
+  });
   app.useBodyParser('json', { limit: '64kb', inflate: false });
   app.useGlobalFilters(new ProblemFilter(app.get(HttpAdapterHost)));
   const spec = new DocumentBuilder()

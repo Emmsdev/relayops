@@ -47,11 +47,18 @@ function startReceiver() {
       response.writeHead(401).end();
       return;
     }
+    let type;
+    try {
+      type = JSON.parse(body.toString('utf8'))?.type;
+    } catch {
+      response.writeHead(400).end();
+      return;
+    }
     if (!firstAttempts.has(id)) {
-      const expiry = globalThis.setTimeout(() => firstAttempts.delete(id), 60_000);
+      const expiry = globalThis.setTimeout(() => firstAttempts.delete(id), type === 'demo.recover' ? 3_600_000 : 60_000);
       expiry.unref();
       firstAttempts.set(id, expiry);
-      response.writeHead(503).end();
+      response.writeHead(type === 'demo.recover' ? 422 : 503).end();
       return;
     }
     response.writeHead(204).end();

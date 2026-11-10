@@ -13,6 +13,7 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY migrations ./migrations
 COPY scripts ./scripts
+COPY public ./public
 USER node
 EXPOSE 3000
 CMD ["node", "dist/main.js"]

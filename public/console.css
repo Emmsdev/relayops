@@ -1,0 +1,78 @@
+:root {
+  color-scheme: dark;
+  --bg: #101613;
+  --panel: #18201c;
+  --line: #394941;
+  --text: #f0f5ef;
+  --muted: #b3c4b9;
+  --accent: #b5ed8c;
+  --warning: #ffc29c;
+  font: 16px/1.5 system-ui, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+[hidden] { display: none !important; }
+a { color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem max(1rem, calc((100vw - 76rem) / 2));
+  border-bottom: 1px solid var(--line);
+}
+.brand { display: inline-flex; align-items: center; gap: .55rem; color: var(--text); text-decoration: none; font-weight: 760; }
+.brand-mark { display: grid; place-items: center; border-radius: .35rem; background: var(--accent); color: var(--bg); width: 1.75rem; height: 1.75rem; }
+.docs-link { font-size: .875rem; }
+main { width: min(76rem, calc(100% - 2rem)); margin: 0 auto 4rem; }
+.intro { margin: clamp(2.4rem, 6vw, 5rem) 0 1.75rem; }
+.eyebrow, .workspace-badge { color: var(--accent); font: 700 .75rem/1.5 ui-monospace, monospace; letter-spacing: .1em; }
+h1 { font-size: clamp(2.25rem, 6vw, 4.5rem); line-height: 1; letter-spacing: -.06em; margin: .45rem 0 .9rem; }
+h2 { font-size: 1.15rem; margin: 0; }
+h3 { font-size: .9rem; margin: 1.4rem 0 .5rem; }
+p { margin: .55rem 0; }
+.intro > p:last-child, .hint { color: var(--muted); }
+.hint, .notice { font-size: .9rem; }
+.notice { min-height: 1.5rem; margin: .85rem 0; }
+.notice[data-error="true"] { color: var(--warning); }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: .75rem; padding: 1.15rem; min-width: 0; }
+.connection, .fields { display: grid; grid-template-columns: 1fr 1fr auto; align-items: end; gap: .85rem; }
+label { display: grid; gap: .3rem; font-size: .85rem; font-weight: 650; }
+input, textarea, select, button { font: inherit; color: var(--text); min-height: 2.65rem; border: 1px solid var(--line); border-radius: .4rem; background: var(--bg); padding: .45rem .7rem; }
+input, textarea { width: 100%; }
+textarea { font-family: ui-monospace, monospace; resize: vertical; }
+button { cursor: pointer; font-size: .875rem; font-weight: 650; }
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: .6; cursor: wait; }
+button.primary { background: var(--accent); color: #162411; border-color: var(--accent); }
+fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.toolbar, .panel-heading { display: flex; justify-content: space-between; align-items: center; gap: .6rem; flex-wrap: wrap; }
+.toolbar, .composer { margin-bottom: .85rem; }
+.composer summary { cursor: pointer; font-weight: 700; }
+.composer form { display: grid; gap: .75rem; margin-top: 1rem; }
+.composer button { justify-self: start; }
+.fields { grid-template-columns: 1fr 1fr; }
+.columns { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: .85rem; align-items: start; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem; }
+.events, .attempts { list-style: none; padding: 0; margin: .8rem 0; }
+.events li + li, .attempts li + li { border-top: 1px solid var(--line); }
+.event-row { display: grid; width: 100%; grid-template-columns: minmax(0, 1fr) auto; gap: .25rem .6rem; align-items: start; text-align: left; padding: .7rem; border-color: transparent; background: transparent; }
+.event-row[aria-pressed="true"] { border-color: var(--accent); background: #222f25; }
+.event-row small { grid-column: 1 / -1; font-weight: 400; color: var(--muted); }
+.event-row strong, .identifier, .event-title, .hint { overflow-wrap: anywhere; }
+.badge { font: 700 .75rem/1.4 ui-monospace, monospace; padding: .15rem .45rem; border-radius: .35rem; background: #313f36; }
+.badge[data-state="delivered"] { background: #29482c; color: #d1ffc3; }
+.badge[data-state="dead"] { background: #50352c; color: #ffd1b7; }
+.event-title { font-weight: 760; font-size: 1.35rem; margin: 1rem 0 .2rem; }
+.identifier { font-family: ui-monospace, monospace; }
+.attempts li { padding: .5rem 0; overflow-wrap: anywhere; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@media (max-width: 48rem) {
+  .columns, .connection { grid-template-columns: 1fr; }
+}
+@media (max-width: 28rem) {
+  .fields { grid-template-columns: 1fr; }
+  .panel { padding: .8rem; }
+}

@@ -8,3 +8,5 @@
 !migrations/**
 !scripts/
 !scripts/**
+!public/
+!public/**

@@ -6,7 +6,7 @@ export async function deliver(
   destination: { url: string; signingSecret: string },
 ): Promise<DeliveryOutcome> {
   const body = JSON.stringify({
-    id: event.id,
+    id: event.deliveryId,
     type: event.type,
     createdAt: event.createdAt,
     payload: event.payload,
@@ -24,10 +24,10 @@ export async function deliver(
       signal,
       headers: {
         'Content-Type': 'application/json',
-        'X-Relay-Event-Id': event.id,
+        'X-Relay-Event-Id': event.deliveryId,
         'X-Relay-Timestamp': timestamp,
         'X-Relay-Signature': `v1=${signature}`,
-        'Idempotency-Key': event.id,
+        'Idempotency-Key': event.deliveryId,
       },
       body,
     });

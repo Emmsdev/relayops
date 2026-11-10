@@ -1,13 +1,13 @@
 import {
   Body, Controller, Get, Header, Headers, HttpCode,
-  HttpStatus, Inject, Param, ParseUUIDPipe, Post, UseGuards,
+  HttpStatus, Inject, Param, ParseUUIDPipe, Post, Query, UseGuards,
 } from '@nestjs/common';
 import {
-  ApiAcceptedResponse, ApiBearerAuth, ApiBody, ApiHeader, ApiOperation, ApiParam, ApiResponse, ApiTags,
+  ApiAcceptedResponse, ApiBearerAuth, ApiBody, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags,
 } from '@nestjs/swagger';
 import { CONFIG, Config } from '../config';
 import { problem } from '../problem.filter';
-import { eventInput, idempotencyKey } from './event.contract';
+import { eventInput, eventListQuery, eventState, idempotencyKey } from './event.contract';
 import { EventRepository } from './event.repository';
 import { WorkspaceGuard } from './workspace.guard';
 
@@ -72,6 +72,36 @@ export class EventsController {
     if (!accepted) throw problem(409, 'This Idempotency-Key was used with different event data.');
 
     return { ...accepted, statusUrl: `/v1/workspaces/${workspace}/events/${accepted.id}` };
+  }
+
+  @Get()
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({ summary: 'List workspace events, newest first' })
+  @ApiQuery({ name: 'state', enum: eventState.options, required: false })
+  @ApiQuery({ name: 'cursor', type: String, required: false })
+  @ApiQuery({ name: 'limit', type: Number, required: false })
+  @ApiResponse({ status: 200, description: 'Event summaries and a cursor for the next page.' })
+  @ApiResponse({ status: 400, description: 'Invalid filter, cursor or page size.' })
+  async list(@Param('workspace') workspace: string, @Query() query: unknown) {
+    const parsed = eventListQuery.safeParse(query);
+    if (!parsed.success) throw problem(400, 'Use a valid state, UUID cursor and limit between 1 and 100.');
+    const { state, cursor, limit = 25 } = parsed.data;
+    return this.events.list(workspace, state, cursor, limit);
+  }
+
+  @Post(':id/replay')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({ summary: 'Start or retrieve the replay of a dead event' })
+  @ApiParam({ name: 'id', format: 'uuid' })
+  @ApiAcceptedResponse({ description: 'The existing or newly queued replay.' })
+  @ApiResponse({ status: 404, description: 'Event is absent from this workspace.' })
+  @ApiResponse({ status: 409, description: 'The event is not dead.' })
+  async replay(@Param('workspace') workspace: string, @Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
+    const replay = await this.events.replay(workspace, id);
+    if (replay.status === 'missing') throw problem(404, 'Event not found.');
+    if (replay.status === 'unavailable') throw problem(409, 'Only dead events can be replayed.');
+    return { ...replay.event, statusUrl: `/v1/workspaces/${workspace}/events/${replay.event.id}` };
   }
 
   @Get(':id')

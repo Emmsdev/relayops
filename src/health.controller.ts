@@ -16,7 +16,8 @@ export class HealthController {
   async ready() {
     const { rows } = await this.db.pool.query<{ ready: boolean }>(`
       SELECT to_regclass('relay_events') IS NOT NULL
-         AND to_regclass('relay_attempts') IS NOT NULL AS ready
+         AND to_regclass('relay_attempts') IS NOT NULL
+         AND to_regclass('relay_events_replay_of') IS NOT NULL AS ready
     `).catch(() => { throw new ServiceUnavailableException(); });
     if (!rows[0]?.ready) throw new ServiceUnavailableException();
     return { status: 'ready' };

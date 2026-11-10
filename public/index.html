@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RelayOps · Delivery Console</title>
+  <link rel="stylesheet" href="/console/console.css">
+  <script src="/console/console.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/console/"><span class="brand-mark" aria-hidden="true">↗</span> RelayOps</a>
+    <a class="docs-link" href="/docs">API reference ↗</a>
+  </header>
+  <main>
+    <div class="intro">
+      <p class="eyebrow">WEBHOOK OPERATIONS</p>
+      <h1>Delivery console</h1>
+      <p>Send an event, trace its attempts and recover failed deliveries.</p>
+    </div>
+
+    <form method="post" id="connect" class="panel connection">
+      <label>Workspace<input name="workspace" value="demo" required pattern="[a-z][a-z0-9\-]{0,47}" autocomplete="off"></label>
+      <label>Workspace key<input name="key" type="password" required minlength="32" maxlength="128" autocomplete="off"></label>
+      <button class="primary" type="submit">Connect workspace</button>
+    </form>
+    <p id="notice" class="notice" role="status" aria-live="polite">Connect with a workspace key to see its delivery history.</p>
+
+    <section id="workspace" hidden aria-label="Workspace operations">
+      <fieldset id="operations">
+        <div class="toolbar">
+          <span class="workspace-badge" id="connected"></span>
+          <button id="disconnect" type="button">Disconnect</button>
+        </div>
+        <details class="panel composer">
+          <summary>Send a webhook</summary>
+          <form method="post" id="publish">
+            <div class="fields">
+              <label>Event type<input name="type" value="demo.recover" required maxlength="100"></label>
+              <label>Destination alias<input name="destination" value="billing" required maxlength="48"></label>
+            </div>
+            <label>JSON payload<textarea name="payload" rows="4" required>{"invoiceId":"DEMO-42","amount":12500,"currency":"XAF"}</textarea></label>
+            <p class="hint">In the demo workspace, <code>demo.recover</code> fails once with HTTP 422 so you can try Replay.</p>
+            <button class="primary" type="submit">Queue webhook</button>
+          </form>
+        </details>
+
+        <div class="columns">
+          <section class="panel history" aria-labelledby="history-title">
+            <div class="panel-heading">
+              <h2 id="history-title">Event history</h2>
+              <div class="actions">
+                <label class="sr-only" for="state">Filter by state</label>
+                <select id="state">
+                  <option value="">All states</option>
+                  <option value="queued">Queued</option>
+                  <option value="sending">Sending</option>
+                  <option value="delivered">Delivered</option>
+                  <option value="dead">Dead</option>
+                </select>
+                <button id="refresh" type="button">Refresh</button>
+              </div>
+            </div>
+            <p id="empty" class="hint">No events in this view.</p>
+            <ul id="events" class="events" aria-label="Events"></ul>
+            <button id="more" type="button" hidden>Load more</button>
+          </section>
+
+          <section class="panel detail" aria-labelledby="detail-title">
+            <div class="panel-heading"><h2 id="detail-title">Delivery details</h2></div>
+            <p id="unselected" class="hint">Select an event to see its attempts.</p>
+            <div id="event-detail" hidden>
+              <p class="event-title" id="event-type"></p>
+              <p class="hint identifier" id="event-id"></p>
+              <p id="event-summary"></p>
+              <div class="actions">
+                <button id="parent" type="button" hidden>Open previous cycle</button>
+                <button id="child" type="button" hidden>Open replay</button>
+                <button id="replay" class="primary" type="button" hidden>Replay failed event</button>
+              </div>
+              <h3>Attempts</h3>
+              <p id="no-attempts" class="hint">Waiting for the first attempt.</p>
+              <ol id="attempts" class="attempts"></ol>
+            </div>
+          </section>
+        </div>
+      </fieldset>
+    </section>
+  </main>
+</body>
+</html>

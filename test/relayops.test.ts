@@ -62,7 +62,7 @@ before(async () => {
   assert.equal((await fetch(baseUrl + '/health/ready')).status, 503);
 
   await Promise.all([runMigrations(pool), runMigrations(pool)]);
-  assert.equal((await pool.query('SELECT name FROM relay_migrations')).rowCount, 1);
+  assert.equal((await pool.query('SELECT name FROM relay_migrations')).rowCount, 2);
 
   firstWorker = await createWorker(config, false);
   secondWorker = await createWorker(config, false);
@@ -220,4 +220,85 @@ test('stops retrying after five failures and recovers a crash on the final attem
   assert.equal(dead.state, 'dead');
   assert.equal(dead.attempts.length, 5);
   assert.ok(dead.attempts.every((attempt: { outcome: string }) => attempt.outcome === 'lease_expired'));
+});
+
+test('serves the operator console and pages event history within the authenticated workspace', async () => {
+  const consolePage = await fetch(baseUrl + '/console/');
+  assert.equal(consolePage.status, 200);
+  assert.match(consolePage.headers.get('content-security-policy') ?? '', /form-action 'none'/);
+  assert.match(await consolePage.text(), /Delivery console/);
+  assert.equal((await fetch(baseUrl + '/console/console.js')).status, 200);
+
+  const headers = { authorization: `Bearer ${mainKey}` };
+  assert.equal((await fetch(baseUrl + path + '?limit=101', { headers })).status, 400);
+  assert.equal((await fetch(baseUrl + path + '?state=bogus', { headers })).status, 400);
+  const pages = [];
+  let cursor: string | null = null;
+  do {
+    const params = new URLSearchParams({ state: 'dead', limit: '1' });
+    if (cursor) params.set('cursor', cursor);
+    const response = await fetch(`${baseUrl}${path}?${params}`, { headers });
+    assert.equal(response.status, 200);
+    const page = await response.json();
+    assert.equal(page.items.length, 1);
+    assert.equal(page.items[0].state, 'dead');
+    pages.push(page.items[0].id);
+    cursor = page.nextCursor;
+  } while (cursor && pages.length < 5);
+  assert.equal(cursor, null);
+  assert.equal(pages.length, 3);
+  assert.equal(new Set(pages).size, 3);
+
+  const other = await fetch(baseUrl + path.replace('/main/', '/other/') + '?cursor=' + pages[0], {
+    headers: { authorization: `Bearer ${otherKey}` },
+  });
+  assert.equal(other.status, 200);
+  assert.deepEqual(await other.json(), { items: [], nextCursor: null });
+});
+
+test('replays a dead event once per cycle without changing the signed webhook identity', async () => {
+  deliveries.length = 0;
+  reply = () => 422;
+  const accepted = await accept('replay-original');
+  const replay = (id: string, workspace = 'main', key = mainKey) => fetch(
+    `${baseUrl}/v1/workspaces/${workspace}/events/${id}/replay`,
+    { method: 'POST', headers: { authorization: `Bearer ${key}` } },
+  );
+
+  assert.equal((await replay(accepted.id)).status, 409);
+  assert.equal(await worker.processOne(), true);
+  assert.equal((await replay(accepted.id, 'other', otherKey)).status, 404);
+  assert.equal((await replay(accepted.id, 'main', otherKey)).status, 401);
+  const responses = await Promise.all(Array.from({ length: 8 }, () => replay(accepted.id)));
+  for (const response of responses) assert.equal(response.status, 202);
+  const replays = await Promise.all(responses.map((response) => response.json()));
+  for (const child of replays) assert.deepEqual(child, replays[0]);
+  const firstReplay = replays[0];
+  assert.notEqual(firstReplay.id, accepted.id);
+  assert.equal(await worker.processOne(), true);
+  assert.equal((await inspect(firstReplay.id)).state, 'dead');
+
+  reply = () => 204;
+  const next = await replay(firstReplay.id);
+  assert.equal(next.status, 202);
+  const secondReplay = await next.json();
+  assert.equal(await worker.processOne(), true);
+  assert.equal(await worker.processOne(), false);
+  assert.equal((await inspect(secondReplay.id)).state, 'delivered');
+  assert.equal((await replay(secondReplay.id)).status, 409);
+  assert.deepEqual(await (await replay(accepted.id)).json(), firstReplay);
+
+  const original = await inspect(accepted.id);
+  const intermediate = await inspect(firstReplay.id);
+  assert.equal(original.replayedBy, firstReplay.id);
+  assert.equal(original.state, 'dead');
+  assert.equal(original.attempts[0].httpStatus, 422);
+  assert.equal(intermediate.replayOf, accepted.id);
+  assert.equal(intermediate.replayedBy, secondReplay.id);
+  assert.equal(deliveries.length, 3);
+  for (const delivery of deliveries) {
+    assert.equal(delivery.body, deliveries[0]?.body);
+    assert.equal(delivery.headers['idempotency-key'], accepted.id);
+    assert.equal(delivery.headers['x-relay-event-id'], accepted.id);
+  }
 });

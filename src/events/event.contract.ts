@@ -24,7 +24,13 @@ export const eventInput = z.strictObject({
 
 export const idempotencyKey = z.string().regex(/^[A-Za-z0-9._:-]{1,128}$/);
 export type EventInput = z.infer<typeof eventInput>;
-export type EventState = 'queued' | 'sending' | 'delivered' | 'dead';
+export const eventState = z.enum(['queued', 'sending', 'delivered', 'dead']);
+export type EventState = z.infer<typeof eventState>;
+export const eventListQuery = z.strictObject({
+  state: eventState.optional(),
+  cursor: z.uuidv4().optional(),
+  limit: z.string().regex(/^(?:[1-9][0-9]?|100)$/).transform(Number).optional(),
+});
 
 export type DeliveryOutcome =
   | { kind: 'delivered' | 'retryable_http' | 'permanent_http'; status: number }
@@ -32,6 +38,7 @@ export type DeliveryOutcome =
 
 export interface ClaimedEvent {
   id: string;
+  deliveryId: string;
   workspace: string;
   destination: string;
   type: string;

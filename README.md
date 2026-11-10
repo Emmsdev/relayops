@@ -21,6 +21,8 @@ Accepted <event-id>. Duplicate returned the same ID.
 Verified signed delivery and retry: 503 → 204.
 ```
 
+Open the [delivery console](http://127.0.0.1:3000/console/) and connect with the demo workspace key from `.env`. To try recovery, open **Send a webhook** and queue the prefilled `demo.recover` event. Use **Refresh** to see its first attempt end with HTTP 422, then select **Replay failed event** and refresh again to see the new cycle delivered. The original failure stays in the history. The console keeps the workspace key in page memory.
+
 Open [Swagger UI](http://127.0.0.1:3000/docs) to send requests with the demo bearer key from `.env`. The OpenAPI document is available at `/docs-json`. Run `docker compose logs worker` to see the attempt outcomes and `docker compose down` to stop the services. The database volume persists between runs.
 
 ## How it works
@@ -49,11 +51,15 @@ PostgreSQL holds the queue and attempt history in the same database. This lets t
 | Method | Path | Result |
 | --- | --- | --- |
 | POST | `/v1/workspaces/{workspace}/events` | Accepts `{ type, destination, payload }` with a required `Idempotency-Key`. Returns HTTP 202 with `id`, `createdAt` and `statusUrl`. |
+| GET | `/v1/workspaces/{workspace}/events` | Lists events newest first. Supports `state`, `limit` and a `cursor` from the previous page. |
+| POST | `/v1/workspaces/{workspace}/events/{id}/replay` | Queues a new delivery cycle for a dead event and returns HTTP 202. Repeating the call for the same source returns the same cycle. |
 | GET | `/v1/workspaces/{workspace}/events/{id}` | Returns event state and attempt history scoped to the authenticated workspace. |
 | GET | `/health/live` | Confirms the HTTP process is responding. |
 | GET | `/health/ready` | Confirms PostgreSQL is reachable and the event tables exist. |
 
 Event endpoints require `Authorization: Bearer <workspace-key>`. The API accepts JSON request bodies up to 64 KiB. Payloads must be JSON objects with a maximum nesting depth of 32. Send identifiers and integers outside JavaScript’s safe integer range as strings. Errors use `application/problem+json`.
+
+A replay has its own API ID and attempt history, linked to the failed cycle. Every cycle sends the original event ID, creation time and payload to the receiver, which can deduplicate processing across replays.
 
 Each delivery includes `X-Relay-Event-Id`, `X-Relay-Timestamp` and `X-Relay-Signature`. To verify the signature, compute HMAC-SHA256 over the timestamp, a period and the exact raw body bytes. Compare the digest in constant time to the hex after `v1=` and enforce a freshness window. The demo receiver shows this flow.
 
@@ -67,7 +73,7 @@ npm run build
 npm run migrate
 ```
 
-Run `npm start`, `npm run worker` and `npm run demo -- receiver` in separate terminals, then run `npm run demo`. Migrations are versioned, checksummed and serialized by an advisory lock.
+Run `npm start`, `npm run worker` and `npm run demo -- receiver` in separate terminals, then run `npm run demo`. Migrations are versioned, checksummed and serialized by an advisory lock. When upgrading to replay support, run the migration and upgrade all worker instances before using the new API. The replay migration adds columns and indexes while preserving existing events and attempts.
 
 The integration suite uses a real PostgreSQL instance and a local HTTP receiver. It creates and cleans up its own randomly named schema in the database provided.
 
